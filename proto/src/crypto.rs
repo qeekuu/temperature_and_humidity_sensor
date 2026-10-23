@@ -31,9 +31,45 @@ pub fn encrypt(
     counter: u64,
     plaintext: &[u8],
 ) -> Result<Envelope, ProtoError> {
-    unimplemented!();
+    let cipher = ChaCha20Poly1305::new(key.into());
+
+    let nonce = make_nonce(counter);
+    let aad = make_aad(device_id, counter);
+
+    let ciphertext = match cipher.encrypt(
+        &nonce,
+        Payload {
+            msg: plaintext,
+            aad: &aad,
+        },
+    ) {
+        Ok(ciphertext) => ciphertext,
+        Err(_) => return Err(ProtoError::Crypto),
+    };
+
+    Ok(Envelope {
+        device_id,
+        counter,
+        ciphertext,
+    })
 }
 
 pub fn decrypt(key: &[u8; 32], envelope: &Envelope) -> Result<Vec<u8>, ProtoError> {
-    unimplemented!();
+    let cipher = ChaCha20Poly1305::new(key.into());
+
+    let nonce = make_nonce(envelope.counter);
+    let aad = make_aad(envelope.device_id, envelope.counter);
+
+    let plaintext = match cipher.decrypt(
+        &nonce,
+        Payload {
+            msg: &envelope.ciphertext,
+            aad: &aad,
+        },
+    ) {
+        Ok(plaintext) => plaintext,
+        Err(_) => return Err(ProtoError::Crypto),
+    };
+
+    Ok(plaintext)
 }
