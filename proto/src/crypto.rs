@@ -73,3 +73,68 @@ pub fn decrypt(key: &[u8; 32], envelope: &Envelope) -> Result<Vec<u8>, ProtoErro
 
     Ok(plaintext)
 }
+
+#[cfg(test)]
+mod tests {
+
+    use super::*;
+
+    const KEY: [u8; 32] = [7u8; 32];
+    const DEVICE_ID: u64 = 34;
+    const COUNTER: u64 = 1;
+    const PLAINTEXT: &[u8] = b"hello";
+
+    fn sample_envelope() -> Envelope {
+        encrypt(&KEY, DEVICE_ID, COUNTER, PLAINTEXT).unwrap()
+    }
+
+    #[test]
+    fn decrypt_returns_original_plaintext() {
+        let envelope = sample_envelope();
+        let decrypted = decrypt(&KEY, &envelope).unwrap();
+        assert_eq!(decrypted, PLAINTEXT);
+    }
+
+    #[test]
+    fn modified_ciphertext_returns_crypto() {
+        let mut envelope = sample_envelope();
+        envelope.ciphertext[0] ^= 1;
+        let result = decrypt(&KEY, &envelope);
+
+        assert!(matches!(result, Err(ProtoError::Crypto)));
+    }
+
+    #[test]
+    fn modified_counter_returns_crypto() {
+        let mut envelope = sample_envelope();
+        envelope.counter += 1;
+        let result = decrypt(&KEY, &envelope);
+
+        assert!(matches!(result, Err(ProtoError::Crypto)));
+    }
+
+    #[test]
+    fn modified_device_id_returns_crypto() {
+        let mut envelope = sample_envelope();
+        envelope.device_id = 57;
+        let result = decrypt(&KEY, &envelope);
+
+        assert!(matches!(result, Err(ProtoError::Crypto)));
+    }
+
+    #[test]
+    fn wrong_key_returns_crypto() {
+        let envelope = sample_envelope();
+        let result = decrypt(&[8u8; 32], &envelope);
+
+        assert!(matches!(result, Err(ProtoError::Crypto)));
+    }
+
+    #[test]
+    fn encrypt_with_different_counters_results_in_diffrent_ciphertext() {
+        let envelope_one = encrypt(&KEY, DEVICE_ID, COUNTER, PLAINTEXT).unwrap();
+        let envelope_two = encrypt(&KEY, DEVICE_ID, COUNTER + 1, PLAINTEXT).unwrap();
+
+        assert_ne!(envelope_one.ciphertext, envelope_two.ciphertext);
+    }
+}
