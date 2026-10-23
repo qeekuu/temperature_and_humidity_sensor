@@ -1,35 +1,24 @@
-use serde::{ Serialize, Deserialize };
-use chrono::{ DateTime, Utc};
+use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
-struct SensorReading {
-    device_id: u64,
-    temp: f64,
-    humidity: f64,
-    timestamp: DateTime<Utc>,
+pub struct SensorReading {
+    pub device_id: u64,
+    pub temp: f64,
+    pub humidity: f64,
+    pub timestamp: DateTime<Utc>,
 }
 
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
-struct Envelope {
-    device_id: u64,
-    counter: u64,
-    nonce: u64,
-    ciphertext: u64,
-}
-
-pub fn add(left: u64, right: u64) -> u64 {
-    left + right
+pub struct Envelope {
+    pub device_id: u64,
+    pub counter: u64,
+    pub ciphertext: Vec<u8>,
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
-    }
 
     #[test]
     fn serialize_and_deserialize_readings() {
@@ -41,9 +30,22 @@ mod tests {
         };
 
         let serialized = serde_json::to_string(&read_data).unwrap();
-        let deserialize: SensorReading = serde_json::from_str(&serialized).unwrap();
+        let deserialized: SensorReading = serde_json::from_str(&serialized).unwrap();
 
-        assert_eq!(read_data.device_id, deserialize.device_id);
-        assert_eq!(read_data.timestamp, deserialize.timestamp);
+        assert_eq!(read_data, deserialized);
+    }
+
+    #[test]
+    fn serialize_and_deserialize_envelope() {
+        let envelope = Envelope {
+            device_id: 1,
+            counter: 1,
+            ciphertext: vec![1, 2, 3, 4, 5],
+        };
+
+        let serialized = serde_json::to_string(&envelope).unwrap();
+        let deserialized: Envelope = serde_json::from_str(&serialized).unwrap();
+
+        assert_eq!(envelope, deserialized);
     }
 }
