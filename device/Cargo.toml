@@ -4,4 +4,9 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+anyhow = "1.0.104"
+chrono = "0.4.45"
 proto = { path = "../proto" }
+rand = "0.10.3"
+rumqttc = "0.25.1"
+serde_json = "1.0.154"
