@@ -1,15 +1,27 @@
+mod cli;
+
 use std::{thread, time::Duration};
 
 use chrono::Utc;
+use clap::Parser;
 use proto::SensorReading;
 use rumqttc::{Client, LastWill, MqttOptions, QoS};
 
-const DEVICE_ID: u64 = 34;
+use crate::cli::{Args, Mode};
 
 fn main() -> anyhow::Result<()> {
-    let mut mqttoptions = MqttOptions::new(format!("sensor-{DEVICE_ID}"), "localhost", 1883);
+    let args = Args::parse();
+    match args.mode {
+        Mode::Plain => {}
+        Mode::Tls => anyhow::bail!("TLS not implemented yet"),
+        Mode::E2e => anyhow::bail!("E2E not implemented yet"),
+    };
+
+    let device_id = args.device_id;
+
+    let mut mqttoptions = MqttOptions::new(format!("sensor-{device_id}"), "localhost", args.port);
     let will = LastWill::new(
-        format!("sensor/{DEVICE_ID}/status"),
+        format!("sensor/{device_id}/status"),
         "offline",
         QoS::AtMostOnce,
         false,
@@ -20,7 +32,7 @@ fn main() -> anyhow::Result<()> {
 
     let (client, mut connection) = Client::new(mqttoptions, 10);
     thread::spawn(move || {
-        if let Err(e) = run_sensor(client) {
+        if let Err(e) = run_sensor(client, device_id) {
             eprintln!("sensor error: {e}");
         }
     });
@@ -38,13 +50,13 @@ fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-fn run_sensor(client: Client) -> anyhow::Result<()> {
-    let topic = format!("sensor/{DEVICE_ID}/telemetry");
+fn run_sensor(client: Client, device_id: u64) -> anyhow::Result<()> {
+    let topic = format!("sensor/{device_id}/telemetry");
     let qos = QoS::AtLeastOnce;
 
     loop {
         let data = SensorReading {
-            device_id: DEVICE_ID,
+            device_id,
             temp: rand::random_range(0.0..45.0),
             humidity: rand::random_range(0.0..50.0),
             timestamp: Utc::now(),

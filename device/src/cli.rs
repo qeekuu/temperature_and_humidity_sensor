@@ -1,0 +1,25 @@
+use clap::{Parser, ValueEnum};
+
+#[derive(Parser)]
+#[command(version, about)]
+pub struct Args {
+    /// Specifies the communication mode you're running the application with
+    #[arg(short, long, value_enum, default_value_t = Mode::Plain)]
+    pub mode: Mode,
+    /// Specifies device id (u64) you're running the application with
+    #[arg(short, long, default_value_t = 34)]
+    pub device_id: u64,
+    /// Specifies the port you're running the application with (MQTT broker)
+    #[arg(short, long, default_value_t = 1883)]
+    pub port: u16,
+}
+
+#[derive(ValueEnum, Copy, Clone, Debug)]
+pub enum Mode {
+    /// Unencrypted MQTT
+    Plain,
+    /// MQTT over TLS
+    Tls,
+    /// Encrypted MQTT by Application-layer encryption (ChaCha20-Poly1305)
+    E2e,
+}
