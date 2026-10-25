@@ -706,7 +706,10 @@ dependencies = [
 name = "server"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "proto",
+ "rumqttc",
+ "serde_json",
 ]
 
 [[package]]
