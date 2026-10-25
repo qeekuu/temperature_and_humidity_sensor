@@ -1,10 +1,29 @@
+mod cli;
+
 use std::thread;
 use std::time::Duration;
 
+use clap::Parser;
 use proto::SensorReading;
 use rumqttc::{Client, Event, Incoming, MqttOptions, Publish, QoS};
 
+use crate::cli::{Cli, Mode};
+
 fn main() -> anyhow::Result<()> {
+    let cli = Cli::parse();
+
+    match cli.command {
+        cli::Commands::Listen { mode } => listen(mode),
+    }
+}
+
+fn listen(mode: Mode) -> anyhow::Result<()> {
+    match mode {
+        Mode::Plain => {}
+        Mode::Tls => anyhow::bail!("TLS not implemented yet"),
+        Mode::E2e => anyhow::bail!("E2E not implemented yet"),
+    };
+
     let mut mqttoptions = MqttOptions::new("server", "localhost", 1883);
     mqttoptions.set_keep_alive(Duration::from_secs(5));
 
