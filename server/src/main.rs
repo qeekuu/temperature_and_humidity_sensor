@@ -14,12 +14,10 @@ fn main() -> anyhow::Result<()> {
 
     for notification in connection.iter() {
         match notification {
-            Ok(Event::Incoming(Incoming::Publish(packet))) => {
-                match handle_message(&packet){
-                    Ok(reading) => println!("Received data from device: {reading:?}"),
-                    Err(error) => eprintln!("Invalid message on {}: {error}", packet.topic),
-                }
-            }
+            Ok(Event::Incoming(Incoming::Publish(packet))) => match handle_message(&packet) {
+                Ok(reading) => println!("Received data from device: {reading:?}"),
+                Err(error) => eprintln!("Invalid message on {}: {error}", packet.topic),
+            },
             Ok(_) => {}
             Err(error) => {
                 eprintln!("Error: {error}");
@@ -33,6 +31,6 @@ fn main() -> anyhow::Result<()> {
 
 fn handle_message(packet: &Publish) -> anyhow::Result<SensorReading> {
     let reading = serde_json::from_slice::<SensorReading>(&packet.payload)?;
-    
+
     Ok(reading)
 }
