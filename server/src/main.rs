@@ -1,8 +1,13 @@
 mod cli;
 
-use std::thread;
+use std::fs::OpenOptions;
+use std::io::Write;
+use std::os::unix::fs::OpenOptionsExt;
+use std::path::Path;
 use std::time::Duration;
+use std::{fs, thread};
 
+use anyhow::Context;
 use clap::Parser;
 use proto::SensorReading;
 use rumqttc::{Client, Event, Incoming, MqttOptions, Publish, QoS};
@@ -14,6 +19,7 @@ fn main() -> anyhow::Result<()> {
 
     match cli.command {
         cli::Commands::Listen { mode } => listen(mode),
+        cli::Commands::Keygen { out } => keygen(&out),
     }
 }
 
@@ -52,4 +58,22 @@ fn handle_message(packet: &Publish) -> anyhow::Result<SensorReading> {
     let reading = serde_json::from_slice::<SensorReading>(&packet.payload)?;
 
     Ok(reading)
+}
+
+fn keygen(out: &Path) -> anyhow::Result<()> {
+    let key: [u8; 32] = rand::random();
+
+    if let Some(dir) = out.parent() {
+        fs::create_dir_all(dir)?;
+    }
+
+    let mut file = OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .mode(0o600)
+        .open(out)
+        .with_context(|| format!("cannot create key file {}", out.display()))?;
+    file.write_all(&key)?;
+
+    Ok(())
 }
