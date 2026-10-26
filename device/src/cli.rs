@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use clap::{Parser, ValueEnum};
 
 #[derive(Parser)]
@@ -12,6 +14,12 @@ pub struct Args {
     /// Specifies the port you're running the application with (MQTT broker)
     #[arg(short, long, default_value_t = 1883)]
     pub port: u16,
+    /// Specifies the input path to key
+    #[arg(short, long, default_value = "keys/key.bin")]
+    pub key: PathBuf,
+    /// Specifies the input path to counter file
+    #[arg(short, long, default_value = "state/counter.txt")]
+    pub counter_file: PathBuf,
 }
 
 #[derive(ValueEnum, Copy, Clone, Debug)]
