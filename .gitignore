@@ -7,3 +7,5 @@ target/
 # Keys for e2e mode
 keys/
 
+# Counter state
+state/
