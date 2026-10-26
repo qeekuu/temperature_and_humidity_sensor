@@ -824,6 +824,7 @@ dependencies = [
  "anyhow",
  "clap",
  "proto",
+ "rand",
  "rumqttc",
  "serde_json",
 ]
