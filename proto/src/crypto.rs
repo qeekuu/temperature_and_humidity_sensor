@@ -3,7 +3,7 @@ use chacha20poly1305::{
     aead::{Aead, KeyInit, Payload},
 };
 
-use crate::{Envelope, ProtoError};
+use crate::{Envelope, ProtoError, SensorReading};
 
 fn make_nonce(counter: u64) -> Nonce {
     let mut nonce_bytes = [0u8; 12];
@@ -25,7 +25,7 @@ fn make_aad(device_id: u64, counter: u64) -> Vec<u8> {
     aad_bytes
 }
 
-pub fn encrypt(
+fn encrypt(
     key: &[u8; 32],
     device_id: u64,
     counter: u64,
@@ -54,7 +54,7 @@ pub fn encrypt(
     })
 }
 
-pub fn decrypt(key: &[u8; 32], envelope: &Envelope) -> Result<Vec<u8>, ProtoError> {
+fn decrypt(key: &[u8; 32], envelope: &Envelope) -> Result<Vec<u8>, ProtoError> {
     let cipher = ChaCha20Poly1305::new(key.into());
 
     let nonce = make_nonce(envelope.counter);
@@ -74,10 +74,25 @@ pub fn decrypt(key: &[u8; 32], envelope: &Envelope) -> Result<Vec<u8>, ProtoErro
     Ok(plaintext)
 }
 
+pub fn encrypt_reading(
+    key: &[u8; 32],
+    counter: u64,
+    reading: &SensorReading,
+) -> Result<Envelope, ProtoError> {
+    let bytes = serde_json::to_vec(reading)?;
+    encrypt(key, reading.device_id, counter, &bytes)
+}
+
+pub fn decrypt_reading(key: &[u8; 32], envelope: &Envelope) -> Result<SensorReading, ProtoError> {
+    let bytes = decrypt(key, envelope)?;
+    Ok(serde_json::from_slice(&bytes)?)
+}
+
 #[cfg(test)]
 mod tests {
 
     use super::*;
+    use chrono::Utc;
 
     const KEY: [u8; 32] = [7u8; 32];
     const DEVICE_ID: u64 = 34;
@@ -136,5 +151,40 @@ mod tests {
         let envelope_two = encrypt(&KEY, DEVICE_ID, COUNTER + 1, PLAINTEXT).unwrap();
 
         assert_ne!(envelope_one.ciphertext, envelope_two.ciphertext);
+    }
+
+    fn sample_reading() -> SensorReading {
+        SensorReading {
+            device_id: DEVICE_ID,
+            temp: 22.5,
+            humidity: 45.0,
+            timestamp: Utc::now(),
+        }
+    }
+
+    #[test]
+    fn decrypt_reading_returns_original_reading() {
+        let reading = sample_reading();
+        let envelope = encrypt_reading(&KEY, COUNTER, &reading).unwrap();
+        let decrypted = decrypt_reading(&KEY, &envelope).unwrap();
+
+        assert_eq!(decrypted, reading);
+    }
+
+    #[test]
+    fn encrypt_reading_sets_envelope_header() {
+        let reading = sample_reading();
+        let envelope = encrypt_reading(&KEY, COUNTER, &reading).unwrap();
+
+        assert_eq!(envelope.device_id, reading.device_id);
+        assert_eq!(envelope.counter, COUNTER);
+    }
+
+    #[test]
+    fn decrypt_reading_with_invalid_json_returns_serde() {
+        let envelope = sample_envelope();
+        let result = decrypt_reading(&KEY, &envelope);
+
+        assert!(matches!(result, Err(ProtoError::Serde(_))));
     }
 }
