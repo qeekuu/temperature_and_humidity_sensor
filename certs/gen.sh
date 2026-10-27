@@ -34,9 +34,8 @@ openssl x509 -req -in server.csr -CA ca.crt -CAkey ca.key -CAcreateserial \
         "extendedKeyUsage=serverAuth" \
         "subjectAltName=DNS:localhost,IP:127.0.0.1")
 
-# The CA key never leaves this machine. The broker key must be readable by the
-# mosquitto user inside the container (UID 1883), hence 644 (demo simplification).
-chmod 600 ca.key
-chmod 644 server.key
+# Private keys are readable only by the owner. The broker container runs as the
+# host user (see compose.yaml), so it can still read server.key.
+chmod 600 ca.key server.key
 
 echo "Generated: ca.crt ca.key server.crt server.key"

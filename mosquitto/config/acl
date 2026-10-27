@@ -1,0 +1,12 @@
+# Rules before the first "user" line apply to anonymous clients (port 1883).
+# Full access to sensor topics keeps the plain and e2e demos working.
+topic readwrite sensor/#
+
+# Sensor 34 may only publish its own telemetry and status.
+user sensor-34
+topic write sensor/34/#
+
+# The server only reads sensor data.
+user server
+topic read sensor/+/telemetry
+topic read sensor/+/status
