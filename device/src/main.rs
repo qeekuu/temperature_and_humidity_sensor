@@ -7,35 +7,40 @@ use std::{
     time::Duration,
 };
 
+use anyhow::Context;
 use chrono::Utc;
 use clap::Parser;
 use proto::{SensorReading, encrypt_reading};
-use rumqttc::{Client, LastWill, MqttOptions, QoS};
+use rumqttc::{Client, LastWill, MqttOptions, QoS, TlsConfiguration, Transport};
 
 use crate::cli::{Args, Mode};
 
 fn main() -> anyhow::Result<()> {
     let args = Args::parse();
     let key = match args.mode {
-        Mode::Plain => None,
-        Mode::Tls => anyhow::bail!("Tls not implemented yet"),
+        Mode::Plain | Mode::Tls => None,
         Mode::E2e => Some(proto::load_key(&args.key)?),
     };
 
     let device_id = args.device_id;
     let counter_file = args.counter_file;
 
-    let mut mqttoptions = MqttOptions::new(format!("sensor-{device_id}"), "localhost", args.port);
     let will = LastWill::new(
         format!("sensor/{device_id}/status"),
         "offline",
         QoS::AtMostOnce,
         false,
     );
-    mqttoptions
-        .set_keep_alive(Duration::from_secs(5))
-        .set_last_will(will);
 
+    let mqttoptions = mqtt(
+        args.mode,
+        &args.ca_file,
+        device_id,
+        will,
+        args.port,
+        args.login,
+        args.password,
+    )?;
     let (client, mut connection) = Client::new(mqttoptions, 10);
     thread::spawn(move || {
         if let Err(e) = run_sensor(client, device_id, key, counter_file) {
@@ -54,6 +59,40 @@ fn main() -> anyhow::Result<()> {
     }
 
     Ok(())
+}
+
+fn mqtt(
+    mode: Mode,
+    ca_file: &Path,
+    device_id: u64,
+    will: LastWill,
+    port: u16,
+    login: String,
+    password: Option<String>,
+) -> anyhow::Result<MqttOptions> {
+    let mut mqttoptions = MqttOptions::new(format!("sensor-{device_id}"), "localhost", port);
+    mqttoptions
+        .set_keep_alive(Duration::from_secs(5))
+        .set_last_will(will);
+
+    match mode {
+        Mode::Plain | Mode::E2e => {}
+        Mode::Tls => {
+            let ca = fs::read(ca_file)?;
+            let transport = Transport::Tls(TlsConfiguration::Simple {
+                ca,
+                alpn: None,
+                client_auth: None,
+            });
+            let password = password.context("set MQTT_PASSWORD_SERVER for tls mode")?;
+
+            mqttoptions
+                .set_transport(transport)
+                .set_credentials(login, password);
+        }
+    }
+
+    Ok(mqttoptions)
 }
 
 fn run_sensor(

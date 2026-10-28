@@ -20,6 +20,15 @@ pub struct Args {
     /// Specifies the input path to counter file
     #[arg(short, long, default_value = "state/counter.txt")]
     pub counter_file: PathBuf,
+    /// CA certificate used to verify the broker (tls mode)
+    #[arg(short = 'C', long, default_value = "certs/ca.crt")]
+    pub ca_file: PathBuf,
+    /// Login credentials for TLS connection
+    #[arg(long, default_value = "sensor-34")]
+    pub login: String,
+    /// Password credentials for TLS connection
+    #[arg(long, env = "MQTT_PASSWORD_SENSOR_34")]
+    pub password: Option<String>,
 }
 
 #[derive(ValueEnum, Copy, Clone, Debug)]
@@ -30,4 +39,15 @@ pub enum Mode {
     Tls,
     /// Encrypted MQTT by Application-layer encryption (ChaCha20-Poly1305)
     E2e,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn verify_cli() {
+        use clap::CommandFactory;
+        Args::command().debug_assert();
+    }
 }
