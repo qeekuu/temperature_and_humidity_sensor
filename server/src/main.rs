@@ -1,16 +1,17 @@
 mod cli;
 
+use std::fs;
 use std::fs::OpenOptions;
 use std::io::Write;
 use std::os::unix::fs::OpenOptionsExt;
-use std::path::{Path, PathBuf};
+use std::path::Path;
+use std::thread;
 use std::time::Duration;
-use std::{fs, thread};
 
 use anyhow::Context;
 use clap::Parser;
 use proto::{Envelope, ReplayGuard, SensorReading, decrypt_reading};
-use rumqttc::{Client, Event, Incoming, MqttOptions, Publish, QoS};
+use rumqttc::{Client, Event, Incoming, MqttOptions, Publish, QoS, TlsConfiguration, Transport};
 
 use crate::cli::{Cli, Mode};
 
@@ -18,20 +19,38 @@ fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
-        cli::Commands::Listen { mode, key } => listen(mode, key),
+        cli::Commands::Listen {
+            mode,
+            key,
+            ca_file,
+            port,
+            login,
+            password,
+        } => listen(mode, &key, &ca_file, port, login, password),
         cli::Commands::Keygen { out } => keygen(&out),
     }
 }
 
-fn listen(mode: Mode, key_path: PathBuf) -> anyhow::Result<()> {
+fn listen(
+    mode: Mode,
+    key_path: &Path,
+    ca_file: &Path,
+    port: u16,
+    login: String,
+    password: Option<String>,
+) -> anyhow::Result<()> {
     let key = match mode {
-        Mode::Plain => None,
-        Mode::Tls => anyhow::bail!("TLS not implemented yet"),
-        Mode::E2e => Some(proto::load_key(&key_path)?),
+        Mode::Plain | Mode::Tls => None,
+        Mode::E2e => Some(proto::load_key(key_path)?),
     };
 
-    let mut mqttoptions = MqttOptions::new("server", "localhost", 1883);
-    mqttoptions.set_keep_alive(Duration::from_secs(5));
+    let mqttoptions = match mode {
+        Mode::Plain | Mode::E2e => mqtt_plain_e2e(port),
+        Mode::Tls => {
+            let password = password.context("set MQTT_PASSWORD_SERVER for tls mode")?;
+            mqtt_tls(ca_file, port, login, password)?
+        }
+    };
 
     let (client, mut connection) = Client::new(mqttoptions, 10);
 
@@ -56,6 +75,35 @@ fn listen(mode: Mode, key_path: PathBuf) -> anyhow::Result<()> {
     }
 
     Ok(())
+}
+
+fn mqtt_tls(
+    ca_file: &Path,
+    port: u16,
+    login: String,
+    password: String,
+) -> anyhow::Result<MqttOptions> {
+    let mut mqttoptions = MqttOptions::new("server", "localhost", port);
+    mqttoptions.set_keep_alive(Duration::from_secs(5));
+    mqttoptions.set_credentials(login, password);
+
+    let ca = fs::read(ca_file)?;
+
+    let transport = Transport::Tls(TlsConfiguration::Simple {
+        ca,
+        alpn: None,
+        client_auth: None,
+    });
+    mqttoptions.set_transport(transport);
+
+    Ok(mqttoptions)
+}
+
+fn mqtt_plain_e2e(port: u16) -> MqttOptions {
+    let mut mqttoptions = MqttOptions::new("server", "localhost", port);
+    mqttoptions.set_keep_alive(Duration::from_secs(5));
+
+    mqttoptions
 }
 
 fn handle_message(
