@@ -8,6 +8,9 @@ pub enum ProtoError {
     Replay,
     Io(std::io::Error),
     InvalidKeyLength(usize),
+    InvalidSignature,
+    InvalidDigest,
+    VersionTooOld,
 }
 
 impl fmt::Display for ProtoError {
@@ -20,6 +23,9 @@ impl fmt::Display for ProtoError {
             ProtoError::InvalidKeyLength(len) => {
                 write!(f, "invalid key length, expected 32 bytes got: {len}")
             }
+            ProtoError::InvalidSignature => write!(f, "invalid firmware signature"),
+            ProtoError::InvalidDigest => write!(f, "firmware image does not match manifest digest"),
+            ProtoError::VersionTooOld => write!(f, "firmware version is not newer than current"),
         }
     }
 }
