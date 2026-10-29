@@ -28,6 +28,7 @@ fn main() -> anyhow::Result<()> {
             password,
         } => listen(mode, &key, &ca_file, port, login, password),
         cli::Commands::Keygen { out } => keygen(&out),
+        cli::Commands::FwKeygen { public, private } => firmware_keygen(&public, &private),
     }
 }
 
@@ -138,17 +139,34 @@ fn handle_message(
 fn keygen(out: &Path) -> anyhow::Result<()> {
     let key: [u8; 32] = rand::random();
 
-    if let Some(dir) = out.parent() {
+    write_key_file(out, &key, 0o600)?;
+
+    Ok(())
+}
+
+fn firmware_keygen(pub_out: &Path, priv_out: &Path) -> anyhow::Result<()> {
+    let key: [u8; 32] = rand::random();
+
+    let public_key = proto::to_public_key(&key);
+
+    write_key_file(priv_out, &key, 0o600)?;
+    write_key_file(pub_out, &public_key, 0o644)?;
+
+    Ok(())
+}
+
+fn write_key_file(path: &Path, key: &[u8], mode: u32) -> anyhow::Result<()> {
+    if let Some(dir) = path.parent() {
         fs::create_dir_all(dir)?;
     }
 
     let mut file = OpenOptions::new()
         .write(true)
         .create_new(true)
-        .mode(0o600)
-        .open(out)
-        .with_context(|| format!("cannot create key file {}", out.display()))?;
-    file.write_all(&key)?;
+        .mode(mode)
+        .open(path)
+        .with_context(|| format!("cannot create file {}", path.display()))?;
+    file.write_all(key)?;
 
     Ok(())
 }

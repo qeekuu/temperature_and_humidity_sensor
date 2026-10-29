@@ -16,7 +16,7 @@ pub enum Commands {
         /// Specifies the communication mode you're running the application with
         #[arg(short, long, value_enum, default_value_t = Mode::Plain)]
         mode: Mode,
-        /// Specifies the key
+        /// Specifies the key path for e2e
         #[arg(short, long, default_value = "keys/key.bin")]
         key: PathBuf,
         /// CA certificate used to verify the broker (tls mode)
@@ -37,6 +37,15 @@ pub enum Commands {
         /// Output path for the key
         #[arg(short, long, default_value = "keys/key.bin")]
         out: PathBuf,
+    },
+    /// Generate a new public and private keys for firmware updates
+    FwKeygen {
+        /// Specifies the path to public key
+        #[arg(long, default_value = "keys/fw_public.bin")]
+        public: PathBuf,
+        /// Specifies the path to private key
+        #[arg(long, default_value = "keys/fw_private.bin")]
+        private: PathBuf,
     },
 }
 
