@@ -11,6 +11,12 @@ pub struct Manifest {
     pub signature: String,
 }
 
+#[derive(Serialize, Deserialize, Debug)]
+pub struct FirmwareUpdate {
+    pub manifest: Manifest,
+    pub image: String,
+}
+
 fn image_digest(image: &[u8]) -> [u8; 32] {
     Sha256::digest(image).into()
 }
@@ -77,6 +83,24 @@ pub fn verify_manifest(
     }
 
     Ok(())
+}
+
+pub fn sign_firmware(private_key: &[u8; 32], version: u32, image: &[u8]) -> FirmwareUpdate {
+    let manifest = sign_manifest(private_key, version, image);
+    let image = hex::encode(image);
+
+    FirmwareUpdate { manifest, image }
+}
+
+pub fn verify_firmware(
+    firmware: &FirmwareUpdate,
+    public_key: &[u8; 32],
+    current_version: u32,
+) -> Result<Vec<u8>, ProtoError> {
+    let image: Vec<u8> = hex::decode(&firmware.image).map_err(|_| ProtoError::InvalidDigest)?;
+    verify_manifest(&firmware.manifest, &image, public_key, current_version)?;
+
+    Ok(image)
 }
 
 #[cfg(test)]
@@ -184,5 +208,50 @@ mod tests {
         let result = verify_manifest(&manifest, IMAGE, &public_key, 2);
 
         assert!(matches!(result, Err(ProtoError::VersionTooOld)));
+    }
+
+    #[test]
+    fn sign_firmware_embeds_image() {
+        let update = sign_firmware(&MANUFACTURER_PRIVATE_KEY, 2, IMAGE);
+
+        let image = hex::decode(&update.image).expect("image is valid hex");
+
+        assert_eq!(image, IMAGE);
+        assert_eq!(update.manifest.version, 2);
+    }
+
+    #[test]
+    fn firmware_update_survives_json_roundtrip() {
+        let update = sign_firmware(&MANUFACTURER_PRIVATE_KEY, 2, IMAGE);
+        let public_key = to_public_key(&MANUFACTURER_PRIVATE_KEY);
+
+        let payload = serde_json::to_vec(&update).expect("update serializes");
+        let received: FirmwareUpdate =
+            serde_json::from_slice(&payload).expect("update deserializes");
+
+        let image = verify_firmware(&received, &public_key, 1).expect("firmware is valid");
+
+        assert_eq!(image, IMAGE);
+    }
+
+    #[test]
+    fn rejects_invalid_image_hex() {
+        let mut update = sign_firmware(&MANUFACTURER_PRIVATE_KEY, 2, IMAGE);
+        update.image = String::from("not hex");
+        let public_key = to_public_key(&MANUFACTURER_PRIVATE_KEY);
+
+        let result = verify_firmware(&update, &public_key, 1);
+
+        assert!(matches!(result, Err(ProtoError::InvalidDigest)));
+    }
+
+    #[test]
+    fn verify_firmware_passes_errors_through() {
+        let update = sign_firmware(&ATTACKER_PRIVATE_KEY, 2, IMAGE);
+        let public_key = to_public_key(&MANUFACTURER_PRIVATE_KEY);
+
+        let result = verify_firmware(&update, &public_key, 1);
+
+        assert!(matches!(result, Err(ProtoError::InvalidSignature)));
     }
 }
