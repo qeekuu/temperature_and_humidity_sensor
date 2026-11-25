@@ -47,6 +47,21 @@ pub enum Commands {
         #[arg(long, default_value = "keys/fw_private.bin")]
         private: PathBuf,
     },
+    /// Sign a firmware image and write the update file
+    FwSign {
+        /// Specifies the path to firmware image
+        #[arg(long)]
+        firmware: PathBuf,
+        /// Specifies the version of the firmware
+        #[arg(short, long)]
+        version: u32,
+        /// Specifies the path to private key
+        #[arg(long, default_value = "keys/fw_private.bin")]
+        private: PathBuf,
+        /// Output path for the signed update [default: <FIRMWARE> with .signed.json extension]
+        #[arg(short, long)]
+        out: Option<PathBuf>,
+    },
 }
 
 #[derive(ValueEnum, Copy, Clone, Debug)]

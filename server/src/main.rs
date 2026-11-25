@@ -29,6 +29,12 @@ fn main() -> anyhow::Result<()> {
         } => listen(mode, &key, &ca_file, port, login, password),
         cli::Commands::Keygen { out } => keygen(&out),
         cli::Commands::FwKeygen { public, private } => firmware_keygen(&public, &private),
+        cli::Commands::FwSign {
+            firmware,
+            version,
+            private,
+            out,
+        } => fw_sign(&firmware, version, &private, out.as_deref()),
     }
 }
 
@@ -139,7 +145,7 @@ fn handle_message(
 fn keygen(out: &Path) -> anyhow::Result<()> {
     let key: [u8; 32] = rand::random();
 
-    write_key_file(out, &key, 0o600)?;
+    write_file(out, &key, 0o600)?;
 
     Ok(())
 }
@@ -149,13 +155,13 @@ fn firmware_keygen(pub_out: &Path, priv_out: &Path) -> anyhow::Result<()> {
 
     let public_key = proto::to_public_key(&key);
 
-    write_key_file(priv_out, &key, 0o600)?;
-    write_key_file(pub_out, &public_key, 0o644)?;
+    write_file(priv_out, &key, 0o600)?;
+    write_file(pub_out, &public_key, 0o644)?;
 
     Ok(())
 }
 
-fn write_key_file(path: &Path, key: &[u8], mode: u32) -> anyhow::Result<()> {
+fn write_file(path: &Path, key: &[u8], mode: u32) -> anyhow::Result<()> {
     if let Some(dir) = path.parent() {
         fs::create_dir_all(dir)?;
     }
@@ -167,6 +173,33 @@ fn write_key_file(path: &Path, key: &[u8], mode: u32) -> anyhow::Result<()> {
         .open(path)
         .with_context(|| format!("cannot create file {}", path.display()))?;
     file.write_all(key)?;
+
+    Ok(())
+}
+
+fn fw_sign(
+    firmware: &Path,
+    version: u32,
+    private_key_path: &Path,
+    out: Option<&Path>,
+) -> anyhow::Result<()> {
+    let private_key = proto::load_key(private_key_path)?;
+    let image = fs::read(firmware)
+        .with_context(|| format!("cannot read firmware file {}", firmware.display()))?;
+
+    let update = proto::sign_firmware(&private_key, version, &image);
+    let update_json = serde_json::to_vec_pretty(&update)?;
+
+    let out_path = out.map_or_else(
+        || firmware.with_extension("signed.json"),
+        |path| path.to_path_buf(),
+    );
+
+    write_file(&out_path, &update_json, 0o644)?;
+
+    println!("Signed firmware version {}", update.manifest.version);
+    println!("SHA-256: {}", update.manifest.image_digest);
+    println!("Output: {}", out_path.display());
 
     Ok(())
 }
