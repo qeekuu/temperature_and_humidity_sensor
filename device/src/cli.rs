@@ -29,6 +29,15 @@ pub struct Args {
     /// Password credentials for TLS connection
     #[arg(long, env = "MQTT_PASSWORD_SENSOR_34")]
     pub password: Option<String>,
+    /// Manufacturer public key used to verify firmware updates
+    #[arg(long, default_value = "keys/fw_public.bin")]
+    pub fw_public_key: PathBuf,
+    /// Directory with firmware state and slots
+    #[arg(long, default_value = "state/firmware")]
+    pub state_dir: PathBuf,
+    /// Skip firmware verification (demo only)
+    #[arg(long)]
+    pub insecure_firmware: bool,
 }
 
 #[derive(ValueEnum, Copy, Clone, Debug)]
