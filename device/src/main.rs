@@ -12,9 +12,11 @@ use anyhow::Context;
 use chrono::Utc;
 use clap::Parser;
 use proto::{SensorReading, encrypt_reading};
-use rumqttc::{Client, LastWill, MqttOptions, QoS, TlsConfiguration, Transport};
+use rumqttc::{Client, Event, Incoming, LastWill, MqttOptions, QoS, TlsConfiguration, Transport};
 
 use crate::cli::{Args, Mode};
+
+const MAX_PACKET_SIZE: usize = 1024 * 1024;
 
 fn main() -> anyhow::Result<()> {
     let args = Args::parse();
@@ -43,18 +45,38 @@ fn main() -> anyhow::Result<()> {
         args.password,
     )?;
     let (client, mut connection) = Client::new(mqttoptions, 10);
+    let fw_client = client.clone();
+    let fw_topic = format!("firmware/{device_id}/update");
+
     thread::spawn(move || {
         if let Err(e) = run_sensor(client, device_id, key, counter_file) {
             eprintln!("sensor error: {e}");
         }
     });
 
+    let mut needs_subscribe = false;
+
     for notification in connection.iter() {
         match notification {
+            Ok(Event::Incoming(Incoming::ConnAck(_))) => needs_subscribe = true,
+            Ok(Event::Incoming(Incoming::Publish(packet))) => {
+                if packet.topic == fw_topic {
+                    println!(
+                        "received firmware update on {fw_topic} ({} bytes)",
+                        packet.payload.len()
+                    );
+                }
+            }
             Ok(event) => println!("{event:?}"),
             Err(error) => {
                 eprintln!("connection error: {error}");
                 thread::sleep(Duration::from_secs(2));
+            }
+        }
+        if needs_subscribe {
+            match fw_client.try_subscribe(&fw_topic, QoS::AtLeastOnce) {
+                Ok(_) => needs_subscribe = false,
+                Err(error) => eprintln!("cannot subscribe to {fw_topic}: {error}"),
             }
         }
     }
@@ -74,7 +96,8 @@ fn mqtt(
     let mut mqttoptions = MqttOptions::new(format!("sensor-{device_id}"), "localhost", port);
     mqttoptions
         .set_keep_alive(Duration::from_secs(5))
-        .set_last_will(will);
+        .set_last_will(will)
+        .set_max_packet_size(MAX_PACKET_SIZE, MAX_PACKET_SIZE);
 
     match mode {
         Mode::Plain | Mode::E2e => {}
