@@ -1,4 +1,5 @@
 mod cli;
+mod firmware;
 
 use std::{
     fs,
