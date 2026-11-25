@@ -25,10 +25,10 @@ pub enum Commands {
         /// Specifies the port
         #[arg(short, long, default_value_t = 1883)]
         port: u16,
-        /// Login creddentials for TLS conncection
+        /// Login credentials for TLS connection
         #[arg(long, default_value = "server")]
         login: String,
-        /// Password creddentials for TLS connection
+        /// Password credentials for TLS connection
         #[arg(long, env = "MQTT_PASSWORD_SERVER")]
         password: Option<String>,
     },
@@ -61,6 +61,30 @@ pub enum Commands {
         /// Output path for the signed update [default: <FIRMWARE> with .signed.json extension]
         #[arg(short, long)]
         out: Option<PathBuf>,
+    },
+    /// Publish a signed firmware update
+    FwPublish {
+        /// Specifies the communication mode you're running the application with
+        #[arg(short, long, value_enum, default_value_t = Mode::Plain)]
+        mode: Mode,
+        /// CA certificate used to verify the broker (tls mode)
+        #[arg(short = 'C', long, default_value = "certs/ca.crt")]
+        ca_file: PathBuf,
+        /// Specifies the port
+        #[arg(short, long, default_value_t = 1883)]
+        port: u16,
+        /// Login credentials for TLS connection
+        #[arg(long, default_value = "server")]
+        login: String,
+        /// Password credentials for TLS connection
+        #[arg(long, env = "MQTT_PASSWORD_SERVER")]
+        password: Option<String>,
+        /// Specifies the path to signed update file
+        #[arg(long)]
+        json_file: PathBuf,
+        /// Specifies device id
+        #[arg(short, long, default_value_t = 34)]
+        device_id: u64,
     },
 }
 

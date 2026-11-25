@@ -15,6 +15,8 @@ use rumqttc::{Client, Event, Incoming, MqttOptions, Publish, QoS, TlsConfigurati
 
 use crate::cli::{Cli, Mode};
 
+const MAX_PACKET_SIZE: usize = 1024 * 1024;
+
 fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
@@ -35,6 +37,15 @@ fn main() -> anyhow::Result<()> {
             private,
             out,
         } => fw_sign(&firmware, version, &private, out.as_deref()),
+        cli::Commands::FwPublish {
+            mode,
+            ca_file,
+            port,
+            login,
+            password,
+            json_file,
+            device_id,
+        } => fw_publish(mode, &ca_file, port, login, password, &json_file, device_id),
     }
 }
 
@@ -52,10 +63,10 @@ fn listen(
     };
 
     let mqttoptions = match mode {
-        Mode::Plain | Mode::E2e => mqtt_plain_e2e(port),
+        Mode::Plain | Mode::E2e => mqtt_plain_e2e(port, "server"),
         Mode::Tls => {
             let password = password.context("set MQTT_PASSWORD_SERVER for tls mode")?;
-            mqtt_tls(ca_file, port, login, password)?
+            mqtt_tls(ca_file, port, login, password, "server")?
         }
     };
 
@@ -89,10 +100,12 @@ fn mqtt_tls(
     port: u16,
     login: String,
     password: String,
+    client_id: &str,
 ) -> anyhow::Result<MqttOptions> {
-    let mut mqttoptions = MqttOptions::new("server", "localhost", port);
+    let mut mqttoptions = MqttOptions::new(client_id, "localhost", port);
     mqttoptions.set_keep_alive(Duration::from_secs(5));
     mqttoptions.set_credentials(login, password);
+    mqttoptions.set_max_packet_size(MAX_PACKET_SIZE, MAX_PACKET_SIZE);
 
     let ca = fs::read(ca_file)?;
 
@@ -106,9 +119,10 @@ fn mqtt_tls(
     Ok(mqttoptions)
 }
 
-fn mqtt_plain_e2e(port: u16) -> MqttOptions {
-    let mut mqttoptions = MqttOptions::new("server", "localhost", port);
+fn mqtt_plain_e2e(port: u16, client_id: &str) -> MqttOptions {
+    let mut mqttoptions = MqttOptions::new(client_id, "localhost", port);
     mqttoptions.set_keep_alive(Duration::from_secs(5));
+    mqttoptions.set_max_packet_size(MAX_PACKET_SIZE, MAX_PACKET_SIZE);
 
     mqttoptions
 }
@@ -202,4 +216,43 @@ fn fw_sign(
     println!("Output: {}", out_path.display());
 
     Ok(())
+}
+
+fn fw_publish(
+    mode: Mode,
+    ca_file: &Path,
+    port: u16,
+    login: String,
+    password: Option<String>,
+    json_file: &Path,
+    device_id: u64,
+) -> anyhow::Result<()> {
+    let payload = fs::read(json_file)
+        .with_context(|| format!("cannot read json file {}", json_file.display()))?;
+    let mqttoptions = match mode {
+        Mode::Plain | Mode::E2e => mqtt_plain_e2e(port, "server-fw"),
+        Mode::Tls => {
+            let password = password.context("set MQTT_PASSWORD_SERVER for tls mode")?;
+            mqtt_tls(ca_file, port, login, password, "server-fw")?
+        }
+    };
+
+    let (client, mut connection) = Client::new(mqttoptions, 10);
+    let topic = format!("firmware/{device_id}/update");
+
+    client.publish(&topic, QoS::AtLeastOnce, true, payload)?;
+
+    for notification in connection.iter() {
+        match notification {
+            Ok(Event::Incoming(Incoming::PubAck(_))) => {
+                println!("Published firmware update on {topic}");
+                return Ok(());
+            }
+            Ok(_) => {}
+            Err(error) => {
+                return Err(error.into());
+            }
+        }
+    }
+    anyhow::bail!("connection closed before broker confirmed the update");
 }
