@@ -84,7 +84,7 @@ fn mqtt(
                 alpn: None,
                 client_auth: None,
             });
-            let password = password.context("set MQTT_PASSWORD_SERVER for tls mode")?;
+            let password = password.context("set MQTT_PASSWORD_SENSOR_34 for tls mode")?;
 
             mqttoptions
                 .set_transport(transport)
