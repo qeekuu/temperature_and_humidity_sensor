@@ -1,12 +1,17 @@
 # Rules before the first "user" line apply to anonymous clients (port 1883).
 # Full access to sensor topics keeps the plain and e2e demos working.
 topic readwrite sensor/#
+# Full access to firmware topics is left open on purpose to demonstrate attacks.
+topic readwrite firmware/#
 
-# Sensor 34 may only publish its own telemetry and status.
+# Sensor 34 may only publish its own telemetry and status,
+# and only read its own firmware updates.
 user sensor-34
 topic write sensor/34/#
+topic read firmware/34/#
 
-# The server only reads sensor data.
+# The server only reads sensor data and publishes firmware updates.
 user server
 topic read sensor/+/telemetry
 topic read sensor/+/status
+topic write firmware/+/update
