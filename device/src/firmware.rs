@@ -215,4 +215,137 @@ mod tests {
 
         assert!(loaded.is_err());
     }
+
+    const MANUFACTURER_KEY: [u8; 32] = [1; 32];
+    const ATTACKER_KEY: [u8; 32] = [2; 32];
+
+    fn signed_update(key: &[u8; 32], version: u32, image: &[u8]) -> Vec<u8> {
+        let update = proto::sign_firmware(key, version, image);
+        serde_json::to_vec(&update).unwrap()
+    }
+
+    fn factory_state() -> FirmwareState {
+        FirmwareState {
+            active_slot: Slot::A,
+            version: 0,
+        }
+    }
+
+    #[test]
+    fn install_writes_inactive_slot_and_switches() {
+        let dir = clean_dir("install");
+        let mut state = factory_state();
+
+        state.install(&dir, b"v1", 1).unwrap();
+        let image = fs::read(dir.join(Slot::B.file_name()));
+        let loaded = FirmwareState::load(&dir);
+        fs::remove_dir_all(&dir).unwrap();
+
+        let expected = FirmwareState {
+            active_slot: Slot::B,
+            version: 1,
+        };
+        assert_eq!(image.unwrap(), b"v1");
+        assert_eq!(state, expected);
+        assert_eq!(loaded.unwrap(), expected);
+    }
+
+    #[test]
+    fn second_install_keeps_previous_image() {
+        let dir = clean_dir("install_twice");
+        let mut state = factory_state();
+
+        state.install(&dir, b"v1", 1).unwrap();
+        state.install(&dir, b"v2", 2).unwrap();
+        let slot_a = fs::read(dir.join(Slot::A.file_name()));
+        let slot_b = fs::read(dir.join(Slot::B.file_name()));
+        fs::remove_dir_all(&dir).unwrap();
+
+        assert_eq!(state.active_slot, Slot::A);
+        assert_eq!(slot_a.unwrap(), b"v2");
+        assert_eq!(slot_b.unwrap(), b"v1");
+    }
+
+    #[test]
+    fn valid_update_is_installed() {
+        let dir = clean_dir("valid_update");
+        let public_key = proto::to_public_key(&MANUFACTURER_KEY);
+        let mut state = factory_state();
+        let payload = signed_update(&MANUFACTURER_KEY, 1, b"firmware v1");
+
+        let result = handle_update(&payload, &public_key, false, &mut state, &dir);
+        let image = fs::read(dir.join(Slot::B.file_name()));
+        fs::remove_dir_all(&dir).unwrap();
+
+        assert!(result.is_ok());
+        assert_eq!(state.version, 1);
+        assert_eq!(image.unwrap(), b"firmware v1");
+    }
+
+    // Shared checks for every rejected update: no error swallowed, nothing written.
+    fn assert_rejected(name: &str, payload: &[u8], current_version: u32) {
+        let dir = clean_dir(name);
+        let public_key = proto::to_public_key(&MANUFACTURER_KEY);
+        let mut state = FirmwareState {
+            active_slot: Slot::A,
+            version: current_version,
+        };
+
+        let result = handle_update(payload, &public_key, false, &mut state, &dir);
+        let written = dir.exists();
+        let _ = fs::remove_dir_all(&dir);
+
+        assert!(result.is_err());
+        assert_eq!(state.active_slot, Slot::A);
+        assert_eq!(state.version, current_version);
+        assert!(!written, "rejected update must not touch the disk");
+    }
+
+    #[test]
+    fn update_signed_by_attacker_is_rejected() {
+        let payload = signed_update(&ATTACKER_KEY, 1, b"evil firmware");
+        assert_rejected("attacker", &payload, 0);
+    }
+
+    #[test]
+    fn tampered_image_is_rejected() {
+        let mut update = proto::sign_firmware(&MANUFACTURER_KEY, 1, b"firmware v1");
+        update.image = hex::encode(b"evil firmware");
+        let payload = serde_json::to_vec(&update).unwrap();
+
+        assert_rejected("tampered", &payload, 0);
+    }
+
+    #[test]
+    fn downgrade_is_rejected() {
+        let payload = signed_update(&MANUFACTURER_KEY, 1, b"firmware v1");
+        assert_rejected("downgrade", &payload, 2);
+    }
+
+    #[test]
+    fn same_version_is_rejected() {
+        let payload = signed_update(&MANUFACTURER_KEY, 2, b"firmware v2");
+        assert_rejected("same_version", &payload, 2);
+    }
+
+    #[test]
+    fn invalid_json_is_rejected() {
+        assert_rejected("invalid_json", b"not a json", 0);
+    }
+
+    // Demo mode: the naive device installs firmware signed by anyone.
+    #[test]
+    fn insecure_mode_installs_attacker_firmware() {
+        let dir = clean_dir("insecure");
+        let public_key = proto::to_public_key(&MANUFACTURER_KEY);
+        let mut state = factory_state();
+        let payload = signed_update(&ATTACKER_KEY, 1, b"evil firmware");
+
+        let result = handle_update(&payload, &public_key, true, &mut state, &dir);
+        let image = fs::read(dir.join(Slot::B.file_name()));
+        fs::remove_dir_all(&dir).unwrap();
+
+        assert!(result.is_ok());
+        assert_eq!(image.unwrap(), b"evil firmware");
+    }
 }
