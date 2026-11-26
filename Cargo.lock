@@ -346,6 +346,7 @@ dependencies = [
  "anyhow",
  "chrono",
  "clap",
+ "hex",
  "proto",
  "rand",
  "rumqttc",
