@@ -44,6 +44,9 @@ fn main() -> anyhow::Result<()> {
         args.login,
         args.password,
     )?;
+    let fw_public_key = proto::load_key(&args.fw_public_key)?;
+    let mut fw_state = firmware::FirmwareState::load(&args.state_dir)?;
+
     let (client, mut connection) = Client::new(mqttoptions, 10);
     let fw_client = client.clone();
     let fw_topic = format!("firmware/{device_id}/update");
@@ -56,6 +59,8 @@ fn main() -> anyhow::Result<()> {
 
     let mut needs_subscribe = false;
 
+    println!("firmware version: {fw_state:?}");
+
     for notification in connection.iter() {
         match notification {
             Ok(Event::Incoming(Incoming::ConnAck(_))) => needs_subscribe = true,
@@ -65,6 +70,19 @@ fn main() -> anyhow::Result<()> {
                         "received firmware update on {fw_topic} ({} bytes)",
                         packet.payload.len()
                     );
+                    match firmware::handle_update(
+                        &packet.payload,
+                        &fw_public_key,
+                        args.insecure_firmware,
+                        &mut fw_state,
+                        &args.state_dir,
+                    ) {
+                        Ok(()) => println!(
+                            "installed firmware version {} in slot {:?}",
+                            fw_state.version, fw_state.active_slot
+                        ),
+                        Err(error) => eprintln!("firmware update rejected: {error}"),
+                    }
                 }
             }
             Ok(event) => println!("{event:?}"),
