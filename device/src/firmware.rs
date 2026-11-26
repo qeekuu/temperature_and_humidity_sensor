@@ -70,6 +70,47 @@ impl FirmwareState {
 
         Ok(())
     }
+
+    pub fn install(&mut self, dir: &Path, image: &[u8], version: u32) -> anyhow::Result<()> {
+        fs::create_dir_all(dir)?;
+        let target = self.active_slot.other();
+        let image_file = dir.join(Slot::file_name(target));
+
+        let mut file = File::create(&image_file)
+            .with_context(|| format!("cannot create image file {}", image_file.display()))?;
+        file.write_all(image)?;
+        file.sync_all()?;
+
+        let state = FirmwareState {
+            active_slot: target,
+            version,
+        };
+        state.save(dir)?;
+        *self = state;
+
+        Ok(())
+    }
+}
+
+pub fn handle_update(
+    payload: &[u8],
+    public_key: &[u8; 32],
+    insecure: bool,
+    state: &mut FirmwareState,
+    dir: &Path,
+) -> anyhow::Result<()> {
+    let update: proto::FirmwareUpdate = serde_json::from_slice(payload)?;
+
+    let image = if insecure {
+        eprintln!("WARNING: firmware verification disabled");
+        hex::decode(&update.image)?
+    } else {
+        proto::verify_firmware(&update, public_key, state.version)?
+    };
+
+    state.install(dir, &image, update.manifest.version)?;
+
+    Ok(())
 }
 
 #[cfg(test)]
